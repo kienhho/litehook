@@ -19,11 +19,23 @@ typedef struct nlist nlist_u;
 
 extern kern_return_t (*litehook_hook_memory)(void *target, void *source, size_t sourceSize);
 
+void litehook_set_image_prepare_callback(int (*callback)(int fd));
+kern_return_t litehook_hook_memory_image(void *target, void *source, size_t sourceSize);
+
 const char *litehook_locate_dsc(void);
 
 void *litehook_find_symbol(const mach_header_u *header, const char *symbolName);
 void *litehook_find_dsc_symbol(const char *imagePath, const char *symbolName);
 kern_return_t litehook_hook_function(void *source, void *target);
+
+struct litehook_function_hook {
+    void *original;
+    void *replacement;
+};
+
+// Applied in array order: later overlapping hooks win. A backend failure can
+// leave earlier ranges installed; no rollback is performed.
+kern_return_t litehook_batch_hook_function(const struct litehook_function_hook *hooks, size_t count);
 
 #define LITEHOOK_REBIND_GLOBAL NULL
 void litehook_rebind_symbol(const mach_header_u *targetHeader, void *replacee, void *replacement, bool (*exceptionFilter)(const mach_header_u *header));

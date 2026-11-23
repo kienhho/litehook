@@ -136,47 +136,17 @@ kern_return_t litehook_protect(vm_address_t addr, vm_size_t size)
 	return litehook_vm_protect(mach_task_self(), addr, size, false, VM_PROT_READ | VM_PROT_EXECUTE);
 }
 
-// Simple memcpy reimplementation since we can't have any external dependencies during critical section
-static void litehook_memcpy(void *target, void *source, size_t size)
-{
-	uint8_t *targetBytes = target;
-	uint8_t *sourceBytes = source;
-	for (size_t i = 0; i < size; i++) {
-		targetBytes[i] = sourceBytes[i];
-	}
-}
-
 kern_return_t litehook_hook_memory_default(void *target, void *source, size_t sourceSize)
 {
-	kern_return_t kr = litehook_unprotect((vm_address_t)target, sourceSize);
-	if (kr != KERN_SUCCESS) return kr;
-
-	litehook_memcpy(target, source, sourceSize);
-
-	kr = litehook_protect((vm_address_t)target, sourceSize);
-	if (kr != KERN_SUCCESS) return kr;
-
-	sys_icache_invalidate(target, sourceSize);
-
-	return KERN_SUCCESS;
+	return litehook_hook_memory_image(target, source, sourceSize);
 }
 
 kern_return_t (*litehook_hook_memory)(void *target, void *source, size_t sourceSize) = litehook_hook_memory_default;
 
 kern_return_t litehook_hook_function(void *source, void *target)
 {
-	void *sourceUnsigned = ptrauth_strip(source, ptrauth_key_function_pointer);
-	void *targetUnsigned = ptrauth_strip(target, ptrauth_key_function_pointer);
-
-	uint32_t hookBytes[] = {
-		_lth_arm64_gen_movk(16, (uint64_t)targetUnsigned >>  0,  0),
-		_lth_arm64_gen_movk(16, (uint64_t)targetUnsigned >> 16, 16),
-		_lth_arm64_gen_movk(16, (uint64_t)targetUnsigned >> 32, 32),
-		_lth_arm64_gen_movk(16, (uint64_t)targetUnsigned >> 48, 48),
-		_lth_arm64_gen_br(16),
-	};
-
-	return litehook_hook_memory(sourceUnsigned, hookBytes, sizeof(hookBytes));
+	const struct litehook_function_hook hook = { source, target };
+	return litehook_batch_hook_function(&hook, 1);
 }
 
 const char *litehook_locate_dsc(void)
