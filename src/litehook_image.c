@@ -211,15 +211,13 @@ static kern_return_t litehook_load_patch_image(struct patch_image *image)
     // Explicitly attach before dlopen: __fcntl redirection may not exist yet.
     int result = prepareImage(image->fd);
     if (result != 0) {
-        fprintf(stderr, "litehook[%d]: signature preparation failed for %s (result=%d)\n",
-                getpid(), image->path, result);
+        fprintf(stderr, "litehook: signature preparation failed (%d)\n", result);
         return KERN_FAILURE;
     }
     image->handle = dlopen(image->path, RTLD_NOW | RTLD_LOCAL);
     if (!image->handle) {
         const char *error = dlerror();
-        fprintf(stderr, "litehook[%d]: dlopen failed after signature preparation for %s: %s\n",
-                getpid(), image->path, error ? error : "no dyld error available");
+        fprintf(stderr, "litehook: dlopen failed: %s\n", error ? error : "unknown error");
         return KERN_FAILURE;
     }
     for (uint32_t i = 0; i < _dyld_image_count(); i++) {
@@ -246,8 +244,7 @@ static kern_return_t litehook_load_patch_image(struct patch_image *image)
             return KERN_SUCCESS;
         }
     }
-    fprintf(stderr, "litehook[%d]: loaded image has no matching payload (path=%s, size=%zu)\n",
-            getpid(), image->path, image->length);
+    fprintf(stderr, "litehook: loaded payload not found\n");
     return KERN_FAILURE;
 }
 
@@ -263,7 +260,7 @@ kern_return_t litehook_hook_memory_image(void *target, void *source, size_t sour
     if (!sourceSize) return KERN_SUCCESS;
     // Reject loader callback reentry instead of deadlocking on imageLock.
     if (installingImage) {
-        fprintf(stderr, "litehook[%d]: recursive image hook installation rejected\n", getpid());
+        fprintf(stderr, "litehook: recursive hook installation\n");
         return KERN_FAILURE;
     }
     installingImage = true;
@@ -273,40 +270,33 @@ kern_return_t litehook_hook_memory_image(void *target, void *source, size_t sour
     void *bytes = NULL;
     vm_address_t start = 0;
     size_t length = 0;
-    const char *stage = "prepare callback registration";
     struct patch_image image = { .fd = -1 };
-    if (!prepareImage) goto out;
-    stage = "target page snapshot";
+    if (!prepareImage) {
+        fprintf(stderr, "litehook: missing preparation callback\n");
+        goto out;
+    }
     kr = litehook_prepare_patch_pages(target, source, sourceSize, &start, &length, &bytes);
     if (kr != KERN_SUCCESS) goto out;
     image.length = length;
-    stage = "signed image creation";
     kr = litehook_create_patch_image(bytes, length, &image);
     if (kr != KERN_SUCCESS) {
-        fprintf(stderr, "litehook[%d]: image creation failed (path=%s, errno=%d: %s)\n",
-                getpid(), image.path, errno, strerror(errno));
+        fprintf(stderr, "litehook: image creation failed (%d)\n", kr);
         goto out;
     }
-    stage = "signature preparation / dlopen / payload lookup";
     kr = litehook_load_patch_image(&image);
     if (kr != KERN_SUCCESS) goto out;
 
     vm_prot_t current, maximum;
     vm_address_t destination = start;
-    stage = "vm_remap";
     kr = vm_remap(mach_task_self(), &destination, length, 0,
                       VM_FLAGS_FIXED | VM_FLAGS_OVERWRITE, mach_task_self(), image.payload,
                       FALSE, &current, &maximum, VM_INHERIT_COPY);
     if (kr == KERN_SUCCESS) {
-        stage = "remapped protection verification";
         sys_icache_invalidate((void *)start, length);
         if (destination != start || current != (VM_PROT_READ | VM_PROT_EXECUTE)) kr = KERN_PROTECTION_FAILURE;
     }
+    if (kr != KERN_SUCCESS) fprintf(stderr, "litehook: remap failed (%d)\n", kr);
 out:
-    if (kr != KERN_SUCCESS) {
-        fprintf(stderr, "litehook[%d]: hook failed at %s (kr=%d, target=%p, size=%zu)\n",
-                getpid(), stage, kr, target, sourceSize);
-    }
     litehook_destroy_patch_image(&image);
     free(bytes);
     pthread_mutex_unlock(&imageLock);
