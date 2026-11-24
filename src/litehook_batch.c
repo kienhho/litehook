@@ -1,6 +1,6 @@
 #include "litehook.h"
 #include "litehook_internal.h"
-#include <mach/mach_vm.h>
+#include <mach/vm_map.h>
 #include <ptrauth.h>
 #include <pthread.h>
 #include <stdint.h>
@@ -100,9 +100,9 @@ kern_return_t litehook_batch_hook_function(const struct litehook_function_hook *
         size_t size = ranges[i].end - ranges[i].start;
         ranges[i].bytes = malloc(size);
         if (!ranges[i].bytes) { kr = KERN_RESOURCE_SHORTAGE; goto out; }
-        mach_vm_size_t copied = 0;
-        kr = mach_vm_read_overwrite(mach_task_self(), ranges[i].start, size,
-                                    (mach_vm_address_t)ranges[i].bytes, &copied);
+        vm_size_t copied = 0;
+        kr = vm_read_overwrite(mach_task_self(), ranges[i].start, size,
+                                    (vm_address_t)ranges[i].bytes, &copied);
         if (kr != KERN_SUCCESS || copied != size) {
             if (kr == KERN_SUCCESS) kr = KERN_FAILURE;
             goto out;

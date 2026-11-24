@@ -4,7 +4,7 @@
 #include <TargetConditionals.h>
 #include <libkern/OSByteOrder.h>
 #include <libkern/OSCacheControl.h>
-#include <mach/mach_vm.h>
+#include <mach/vm_map.h>
 #include <mach-o/dyld.h>
 #include <dlfcn.h>
 #include <errno.h>
@@ -34,7 +34,7 @@ struct patch_image {
     int fd;
     void *handle;
     uuid_t uuid;
-    mach_vm_address_t payload;
+    vm_address_t payload;
     size_t length;
 };
 
@@ -56,7 +56,7 @@ static bool round_size(size_t size, size_t page, size_t *out)
 }
 
 static kern_return_t litehook_prepare_patch_pages(void *target, void *source, size_t size,
-                                                 mach_vm_address_t *start, size_t *length, void **bytes)
+                                                 vm_address_t *start, size_t *length, void **bytes)
 {
     size_t page = vm_page_size;
     uintptr_t address = (uintptr_t)target;
@@ -68,9 +68,9 @@ static kern_return_t litehook_prepare_patch_pages(void *target, void *source, si
         return KERN_INVALID_ARGUMENT;
     *bytes = malloc(*length);
     if (!*bytes) return KERN_RESOURCE_SHORTAGE;
-    mach_vm_size_t copied = 0;
-    kern_return_t kr = mach_vm_read_overwrite(mach_task_self(), *start, *length,
-                                             (mach_vm_address_t)*bytes, &copied);
+    vm_size_t copied = 0;
+    kern_return_t kr = vm_read_overwrite(mach_task_self(), *start, *length,
+                                             (vm_address_t)*bytes, &copied);
     if (kr != KERN_SUCCESS || copied != *length) {
         free(*bytes);
         *bytes = NULL;
@@ -262,7 +262,7 @@ kern_return_t litehook_hook_memory_image(void *target, void *source, size_t sour
     pthread_mutex_lock(&imageLock);
     kern_return_t kr = KERN_FAILURE;
     void *bytes = NULL;
-    mach_vm_address_t start = 0;
+    vm_address_t start = 0;
     size_t length = 0;
     struct patch_image image = { .fd = -1 };
     if (!prepareImage) goto out;
@@ -275,8 +275,8 @@ kern_return_t litehook_hook_memory_image(void *target, void *source, size_t sour
     if (kr != KERN_SUCCESS) goto out;
 
     vm_prot_t current, maximum;
-    mach_vm_address_t destination = start;
-    kr = mach_vm_remap(mach_task_self(), &destination, length, 0,
+    vm_address_t destination = start;
+    kr = vm_remap(mach_task_self(), &destination, length, 0,
                       VM_FLAGS_FIXED | VM_FLAGS_OVERWRITE, mach_task_self(), image.payload,
                       FALSE, &current, &maximum, VM_INHERIT_COPY);
     if (kr == KERN_SUCCESS) {
