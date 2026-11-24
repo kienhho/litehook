@@ -280,12 +280,6 @@ kern_return_t litehook_hook_memory_image(void *target, void *source, size_t sour
                       VM_FLAGS_FIXED | VM_FLAGS_OVERWRITE, mach_task_self(), image.payload,
                       FALSE, &current, &maximum, VM_INHERIT_COPY);
     if (kr == KERN_SUCCESS) {
-        // Keep the dlopen reference and file, including when protection checks fail:
-        // the target already owns a mapping backed by this image.
-        if (image.fd >= 0) close(image.fd);
-        image.fd = -1;
-        image.handle = NULL;
-        image.path[0] = 0;
         sys_icache_invalidate((void *)start, length);
         if (destination != start || current != (VM_PROT_READ | VM_PROT_EXECUTE)) kr = KERN_PROTECTION_FAILURE;
     }
