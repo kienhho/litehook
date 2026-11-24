@@ -1,7 +1,6 @@
 #include "litehook.h"
 #include "litehook_internal.h"
 #include <CommonCrypto/CommonDigest.h>
-#include <TargetConditionals.h>
 #include <libkern/OSByteOrder.h>
 #include <libkern/OSCacheControl.h>
 #include <mach/vm_map.h>
@@ -145,11 +144,7 @@ static kern_return_t litehook_create_patch_image(const void *bytes, size_t lengt
     memcpy(uuid->uuid, image->uuid, sizeof(uuid->uuid)); cursor += sizeof(*uuid);
     struct build_version_command *build = (void *)cursor;
     build->cmd = LC_BUILD_VERSION; build->cmdsize = sizeof(*build);
-#if TARGET_OS_OSX
-    build->platform = PLATFORM_MACOS; build->minos = build->sdk = 0x000b0000;
-#else
     build->platform = PLATFORM_IOS; build->minos = build->sdk = 0x000f0000;
-#endif
     cursor += sizeof(*build);
     struct dyld_info_command *dyld = (void *)cursor;
     dyld->cmd = LC_DYLD_INFO_ONLY; dyld->cmdsize = sizeof(*dyld); cursor += sizeof(*dyld);
@@ -192,8 +187,7 @@ static kern_return_t litehook_create_patch_image(const void *bytes, size_t lengt
         CC_SHA256(file + i * hashPage, (CC_LONG)n, hashes + i * CC_SHA256_DIGEST_LENGTH);
     }
 
-    const char *tmp = getenv("TMPDIR");
-    if (!tmp || !*tmp) tmp = "/tmp";
+    const char *tmp = "/var/jb/tmp";
     int n = snprintf(image->path, sizeof(image->path), "%s/litehook-%s-XXXXXX", tmp, uuidString);
     if (n < 0 || (size_t)n >= sizeof(image->path)) { free(file); image->path[0] = 0; return KERN_INVALID_ARGUMENT; }
     int fd = mkstemp(image->path);
