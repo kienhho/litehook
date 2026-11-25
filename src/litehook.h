@@ -33,8 +33,7 @@ struct litehook_function_hook {
     void *replacement;
 };
 
-// Applied in array order: later overlapping hooks win. A backend failure can
-// leave earlier ranges installed; no rollback is performed.
+
 kern_return_t litehook_batch_hook_function(const struct litehook_function_hook *hooks, size_t count);
 
 #define LITEHOOK_REBIND_GLOBAL NULL

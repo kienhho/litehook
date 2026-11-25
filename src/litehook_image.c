@@ -16,7 +16,6 @@
 #include <unistd.h>
 #include <uuid/uuid.h>
 
-// Only data is constructed in writable memory. Executable pages come from dyld.
 static pthread_mutex_t imageLock = PTHREAD_MUTEX_INITIALIZER;
 static _Thread_local bool installingImage;
 static int (*prepareImage)(int fd);
@@ -37,7 +36,6 @@ struct patch_image {
     size_t length;
 };
 
-// CodeDirectory through version 0x20400, in big-endian byte order.
 struct patch_cd {
     uint32_t magic, length, version, flags, hashOffset, identOffset;
     uint32_t nSpecialSlots, nCodeSlots, codeLimit;
@@ -97,7 +95,6 @@ static void add_segment(uint8_t **cursor, const char *name, uint64_t offset,
 static kern_return_t litehook_create_patch_image(const void *bytes, size_t length, struct patch_image *image)
 {
     const size_t page = vm_page_size, hashPage = 4096;
-    // Keep all file offsets, CodeDirectory sizes, and SHA-256 input lengths bounded.
     if (length > UINT32_MAX - page) return KERN_INVALID_ARGUMENT;
     size_t codeSize = page + length;
     size_t slots = (codeSize + hashPage - 1) / hashPage;
@@ -115,7 +112,7 @@ static kern_return_t litehook_create_patch_image(const void *bytes, size_t lengt
     header->magic = MH_MAGIC_64;
     header->cputype = CPU_TYPE_ARM64;
 #if __arm64e__
-    header->cpusubtype = CPU_SUBTYPE_ARM64E | (cpu_subtype_t)0x80000000; // arm64e ABI v2
+    header->cpusubtype = CPU_SUBTYPE_ARM64E | (cpu_subtype_t)0x80000000;
 #else
     header->cpusubtype = CPU_SUBTYPE_ARM64_ALL;
 #endif
@@ -208,7 +205,6 @@ static kern_return_t litehook_create_patch_image(const void *bytes, size_t lengt
 
 static kern_return_t litehook_load_patch_image(struct patch_image *image)
 {
-    // Explicitly attach before dlopen: __fcntl redirection may not exist yet.
     int result = prepareImage(image->fd);
     if (result != 0) {
         fprintf(stderr, "litehook: signature preparation failed (%d)\n", result);
@@ -258,7 +254,6 @@ static void litehook_destroy_patch_image(struct patch_image *image)
 kern_return_t litehook_hook_memory_image(void *target, void *source, size_t sourceSize)
 {
     if (!sourceSize) return KERN_SUCCESS;
-    // Reject loader callback reentry instead of deadlocking on imageLock.
     if (installingImage) {
         fprintf(stderr, "litehook: recursive hook installation\n");
         return KERN_FAILURE;

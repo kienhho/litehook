@@ -75,8 +75,6 @@ kern_return_t litehook_batch_hook_function(const struct litehook_function_hook *
     locked = true;
     kern_return_t (*backend)(void *, void *, size_t) = litehook_hook_memory;
     if (!backend) { kr = KERN_FAILURE; goto out; }
-    // Alternate backends (notably hookd) have their own size/protocol limits.
-    // Preserve their original short writes rather than sending whole VM pages.
     if (backend != litehook_hook_memory_default && backend != litehook_hook_memory_image) {
         kr = KERN_SUCCESS;
         for (size_t i = 0; i < count; i++) {
@@ -94,8 +92,6 @@ kern_return_t litehook_batch_hook_function(const struct litehook_function_hook *
             ranges[rangeCount++] = ranges[i];
         }
     }
-    // Prepare every snapshot before installing anything. Keep the same lock
-    // through installation so immediate hooks cannot invalidate these snapshots.
     for (size_t i = 0; i < rangeCount; i++) {
         size_t size = ranges[i].end - ranges[i].start;
         ranges[i].bytes = malloc(size);
@@ -107,7 +103,6 @@ kern_return_t litehook_batch_hook_function(const struct litehook_function_hook *
             if (kr == KERN_SUCCESS) kr = KERN_FAILURE;
             goto out;
         }
-        // Original array order is significant: the newest overlapping hook wins.
         for (size_t j = 0; j < count; j++) {
             if (patches[j].address >= ranges[i].start && patches[j].address < ranges[i].end)
                 memcpy((uint8_t *)ranges[i].bytes + patches[j].address - ranges[i].start,
