@@ -1,3 +1,10 @@
+## Changes in this litehook fork
+Implemented ``litehook_batch_hook_function`` which takes an array of function.
+
+``litehook_hook_memory`` write the patched pages to a file, call up code signature fix up, and map the signed patched page over the original location.
+
+Tested only on arm64.
+
 # litehook
 Lightweight *OS hooking library with no dependencies except for libsystem
 
